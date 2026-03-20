@@ -9,8 +9,8 @@ interface CheckboxProps {
 }
 
 const sizeMap = {
-  sm: { box: 'w-3.5 h-3.5', icon: 10 },
-  md: { box: 'w-4.5 h-4.5', icon: 13 },
+  sm: { box: 'w-3.5 h-3.5', icon: 9, radius: 'rounded-[3px]' },
+  md: { box: 'w-4 h-4', icon: 11, radius: 'rounded-[4px]' },
 };
 
 export const Checkbox: React.FC<CheckboxProps> = ({
@@ -19,7 +19,7 @@ export const Checkbox: React.FC<CheckboxProps> = ({
   size = 'md',
   className = '',
 }) => {
-  const { box, icon } = sizeMap[size];
+  const { box, icon, radius } = sizeMap[size];
 
   return (
     <button
@@ -31,12 +31,11 @@ export const Checkbox: React.FC<CheckboxProps> = ({
         onChange(!checked);
       }}
       className={`
-        flex items-center justify-center shrink-0 rounded-[4px] border transition-all duration-150
-        ${box}
-        ${
-          checked
-            ? 'bg-[#5b9fd6] border-[#5b9fd6]'
-            : 'bg-transparent border-white/25 hover:border-white/40'
+        flex items-center justify-center shrink-0 border transition-[background,border-color] duration-100
+        ${box} ${radius}
+        ${checked
+          ? 'bg-[#4a9eff] border-[#4a9eff]'
+          : 'bg-transparent border-[#555] hover:border-[#888]'
         }
         ${className}
       `}

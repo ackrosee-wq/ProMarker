@@ -6,6 +6,7 @@ export interface PProMarkerData {
   duration: number;
   color: string;
   guid: string;
+  comments: string;
 }
 
 export interface BridgeEvents {

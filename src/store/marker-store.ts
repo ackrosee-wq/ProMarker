@@ -119,6 +119,11 @@ export const useMarkerStore = create<MarkerState>((set, get) => ({
         await cepBridge.updateMarkerName(id, updates.name);
       }
 
+      // If notes changed, store them in the marker's comments field
+      if (updates.notes !== undefined && updates.notes !== marker.notes) {
+        await cepBridge.updateMarkerComments(id, updates.notes);
+      }
+
       set((state) => ({
         markers: state.markers.map((m) =>
           m.id === id ? { ...m, ...updates, updatedAt: Date.now() } : m
@@ -237,14 +242,16 @@ export const useMarkerStore = create<MarkerState>((set, get) => ({
         for (const pm of pproMarkers) {
           const existing = existingById.get(pm.guid);
           if (existing) {
-            // Merge: keep local enrichments (notes, attachments, checked, ideaBoardData)
+            // Merge: keep local enrichments (attachments, checked, ideaBoardData)
             // but update time/duration/color from Premiere (source of truth for timeline data)
+            // Notes come from marker comments in Premiere
             updatedMarkers.push({
               ...existing,
               name: pm.name || existing.name,
               time: pm.time,
               duration: pm.duration,
               color: pm.color || existing.color,
+              notes: pm.comments || existing.notes,
               updatedAt: Date.now(),
             });
           } else {
@@ -256,7 +263,7 @@ export const useMarkerStore = create<MarkerState>((set, get) => ({
               duration: pm.duration,
               color: pm.color || 'green',
               checked: false,
-              notes: '',
+              notes: pm.comments || '',
               attachments: [],
               ideaBoardData: null,
               createdAt: Date.now(),

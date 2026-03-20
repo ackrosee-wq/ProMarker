@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { fabric } from 'fabric';
-import { AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
+import { X } from 'lucide-react';
 import { Toolbar } from './Toolbar';
 import { ContextMenu } from './ContextMenu';
 import { createStickyNote } from './StickyNote';
@@ -9,7 +10,8 @@ import { useMarkerStore } from '../../store/marker-store';
 import { cepBridge } from '../../bridge/cep-bridge';
 
 interface IdeaBoardProps {
-  markerId: string | null;
+  markerId: string;
+  onClose: () => void;
 }
 
 interface HistoryEntry {
@@ -63,7 +65,7 @@ function setGridVisible(canvas: fabric.Canvas, show: boolean) {
   canvas.requestRenderAll();
 }
 
-export const IdeaBoard: React.FC<IdeaBoardProps> = ({ markerId }) => {
+export const IdeaBoard: React.FC<IdeaBoardProps> = ({ markerId, onClose }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -837,18 +839,30 @@ export const IdeaBoard: React.FC<IdeaBoardProps> = ({ markerId }) => {
     cepBridge.pushIdeaBoardToAE(markerId, dataUrl);
   }, [markerId]);
 
-  if (!markerId) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-[11px] text-[#d8d8d8]/30">
-          Select a marker to open its Idea Board
-        </p>
-      </div>
-    );
-  }
+  const markerName = useMarkerStore.getState().markers.find((m) => m.id === markerId)?.name || 'Idea Board';
 
   return (
-    <div className="flex flex-col h-full pb-12">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 8 }}
+      transition={{ duration: 0.15 }}
+      className="fixed inset-0 z-[200] flex flex-col bg-[#1e1e1e]"
+    >
+      {/* Top bar — title + close */}
+      <div className="flex items-center justify-between h-8 px-2.5 bg-[#232323] border-b border-[#3a3a3a] shrink-0">
+        <span className="text-[11px] font-semibold text-[#e0e0e0] truncate">
+          {markerName}
+        </span>
+        <button
+          onClick={onClose}
+          className="flex items-center justify-center w-5 h-5 rounded text-[#777] hover:text-[#e0e0e0] hover:bg-[#333] transition-[color,background] duration-100"
+        >
+          <X size={13} />
+        </button>
+      </div>
+
+      {/* Toolbar */}
       <Toolbar
         onUndo={handleUndo}
         onRedo={handleRedo}
@@ -856,6 +870,8 @@ export const IdeaBoard: React.FC<IdeaBoardProps> = ({ markerId }) => {
         canUndo={canUndo}
         canRedo={canRedo}
       />
+
+      {/* Canvas */}
       <div ref={containerRef} className="flex-1 relative overflow-hidden">
         <canvas ref={canvasRef} />
         <AnimatePresence>
@@ -880,6 +896,6 @@ export const IdeaBoard: React.FC<IdeaBoardProps> = ({ markerId }) => {
           )}
         </AnimatePresence>
       </div>
-    </div>
+    </motion.div>
   );
 };

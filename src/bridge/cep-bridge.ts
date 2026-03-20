@@ -12,14 +12,14 @@ type EventCallback = (data: any) => void;
 // ---------------------------------------------------------------------------
 
 const MOCK_MARKERS: PProMarkerData[] = [
-  { name: 'Intro Title', time: 0.0, duration: 2.5, color: 'green', guid: 'mock-guid-001' },
-  { name: 'Interview A - Start', time: 5.2, duration: 0, color: 'blue', guid: 'mock-guid-002' },
-  { name: 'B-Roll Mountains', time: 12.8, duration: 4.0, color: 'cyan', guid: 'mock-guid-003' },
-  { name: 'Music Cue - Strings', time: 22.0, duration: 0, color: 'purple', guid: 'mock-guid-004' },
-  { name: 'Lower Third - John', time: 30.5, duration: 3.0, color: 'yellow', guid: 'mock-guid-005' },
-  { name: 'VFX Shot - Replace Sky', time: 45.0, duration: 6.0, color: 'red', guid: 'mock-guid-006' },
-  { name: 'Transition - Crossfade', time: 58.3, duration: 1.5, color: 'orange', guid: 'mock-guid-007' },
-  { name: 'Credits Start', time: 72.0, duration: 8.0, color: 'white', guid: 'mock-guid-008' },
+  { name: 'Intro Title', time: 0.0, duration: 2.5, color: 'green', guid: 'mock-guid-001', comments: '' },
+  { name: 'Interview A - Start', time: 5.2, duration: 0, color: 'blue', guid: 'mock-guid-002', comments: '' },
+  { name: 'B-Roll Mountains', time: 12.8, duration: 4.0, color: 'cyan', guid: 'mock-guid-003', comments: '' },
+  { name: 'Music Cue - Strings', time: 22.0, duration: 0, color: 'purple', guid: 'mock-guid-004', comments: '' },
+  { name: 'Lower Third - John', time: 30.5, duration: 3.0, color: 'yellow', guid: 'mock-guid-005', comments: '' },
+  { name: 'VFX Shot - Replace Sky', time: 45.0, duration: 6.0, color: 'red', guid: 'mock-guid-006', comments: '' },
+  { name: 'Transition - Crossfade', time: 58.3, duration: 1.5, color: 'orange', guid: 'mock-guid-007', comments: '' },
+  { name: 'Credits Start', time: 72.0, duration: 8.0, color: 'white', guid: 'mock-guid-008', comments: '' },
 ];
 
 let mockGuidCounter = 100;
@@ -287,6 +287,7 @@ class CepBridge {
         duration: marker.duration || 0,
         color: colorStr,
         guid,
+        comments: '',
       });
       debugLogger.info('CepBridge.addMarker', `Mock marker added: ${marker.name} (${guid})`);
       return guid;
@@ -317,6 +318,18 @@ class CepBridge {
     return success;
   }
 
+  /** Update the comments of a marker (stores ProMarker metadata). */
+  async updateMarkerComments(guid: string, comments: string): Promise<boolean> {
+    if (this.isMock) {
+      debugLogger.info('CepBridge.updateMarkerComments', `Mock update comments for ${guid}`);
+      return true;
+    }
+    const result = await this.evalScript(
+      `updateMarkerComments("${this.escapeJsx(guid)}", "${this.escapeJsx(comments)}")`
+    );
+    return result === 'true';
+  }
+
   /** Update the name of an existing marker. */
   async updateMarkerName(guid: string, name: string): Promise<boolean> {
     if (this.isMock) {
@@ -335,6 +348,16 @@ class CepBridge {
     const success = result === 'true';
     debugLogger.info('CepBridge.updateMarkerName', `Rename ${guid} to "${name}": ${success}`);
     return success;
+  }
+
+  /** Seek the playhead to a specific time. */
+  async seekToTime(timeInSeconds: number): Promise<boolean> {
+    if (this.isMock) {
+      debugLogger.info('CepBridge.seekToTime', `Mock seek to ${timeInSeconds}s`);
+      return true;
+    }
+    const result = await this.evalScript(`seekToTime(${timeInSeconds})`);
+    return result === 'true';
   }
 
   /** Get the current playhead time in seconds. */

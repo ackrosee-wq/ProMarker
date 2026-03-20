@@ -242,6 +242,31 @@ function getActiveSequenceName() {
 }
 
 /**
+ * Read all data from a single marker object into a plain JS object.
+ */
+function readMarkerData(marker) {
+    var obj = {};
+    obj.name = '';
+    obj.time = 0;
+    obj.duration = 0;
+    obj.color = 'green';
+    obj.guid = '';
+    obj.comments = '';
+
+    try { obj.name = marker.name || ''; } catch (e) {}
+    try { obj.time = marker.start.seconds; } catch (e) {}
+    try {
+        var d = marker.end.seconds - marker.start.seconds;
+        obj.duration = d > 0 ? d : 0;
+    } catch (e) {}
+    try { obj.color = markerColorToString(marker.colorIndex || 0); } catch (e) {}
+    try { obj.guid = marker.guid || ''; } catch (e) {}
+    try { obj.comments = marker.comments || ''; } catch (e) {}
+
+    return obj;
+}
+
+/**
  * Get all markers from the active sequence.
  * @returns {string} JSON array of marker objects.
  */
@@ -257,108 +282,11 @@ function getSequenceMarkers() {
         var numMarkers = markers.numMarkers;
 
         if (typeof numMarkers === 'undefined' || numMarkers === 0) {
-            // Try iteration approach if numMarkers is not available
             var marker = markers.getFirstMarker();
             while (marker) {
-                var markerObj = {};
-                markerObj.name = marker.name || '';
-                markerObj.time = 0;
-                markerObj.duration = 0;
-                markerObj.color = 'green';
-                markerObj.guid = '';
-
-                // Get time safely
-                try {
-                    markerObj.time = marker.start.seconds;
-                } catch (te) {
-                    markerObj.time = 0;
-                }
-
-                // Get duration safely
-                try {
-                    var endSec = marker.end.seconds;
-                    var startSec = marker.start.seconds;
-                    markerObj.duration = endSec - startSec;
-                    if (markerObj.duration < 0) markerObj.duration = 0;
-                } catch (de) {
-                    markerObj.duration = 0;
-                }
-
-                // Get color safely
-                try {
-                    var cIdx = marker.getColorByIndex(marker.colorIndex || 0);
-                    markerObj.color = markerColorToString(cIdx);
-                } catch (ce) {
-                    // Some Premiere versions expose color differently
-                    try {
-                        markerObj.color = markerColorToString(marker.colorIndex || 0);
-                    } catch (ce2) {
-                        markerObj.color = 'green';
-                    }
-                }
-
-                // Get GUID safely
-                try {
-                    markerObj.guid = marker.guid || '';
-                } catch (ge) {
-                    markerObj.guid = '';
-                }
-
-                result.push(markerObj);
-
-                try {
-                    marker = markers.getNextMarker(marker);
-                } catch (ne) {
-                    break;
-                }
+                result.push(readMarkerData(marker));
+                try { marker = markers.getNextMarker(marker); } catch (ne) { break; }
             }
-        } else {
-            // Use indexed access if numMarkers is available
-            var marker = markers.getFirstMarker();
-            while (marker) {
-                var markerObj = {};
-                markerObj.name = marker.name || '';
-                markerObj.time = 0;
-                markerObj.duration = 0;
-                markerObj.color = 'green';
-                markerObj.guid = '';
-
-                try {
-                    markerObj.time = marker.start.seconds;
-                } catch (te) {
-                    markerObj.time = 0;
-                }
-
-                try {
-                    var endSec = marker.end.seconds;
-                    var startSec = marker.start.seconds;
-                    markerObj.duration = endSec - startSec;
-                    if (markerObj.duration < 0) markerObj.duration = 0;
-                } catch (de) {
-                    markerObj.duration = 0;
-                }
-
-                try {
-                    markerObj.color = markerColorToString(marker.colorIndex || 0);
-                } catch (ce) {
-                    markerObj.color = 'green';
-                }
-
-                try {
-                    markerObj.guid = marker.guid || '';
-                } catch (ge) {
-                    markerObj.guid = '';
-                }
-
-                result.push(markerObj);
-
-                try {
-                    marker = markers.getNextMarker(marker);
-                } catch (ne) {
-                    break;
-                }
-            }
-        }
 
         return JSON.stringify(result);
     } catch (e) {
@@ -650,6 +578,42 @@ function getProjectInfo() {
         return JSON.stringify(info);
     } catch (e) {
         return '{}';
+    }
+}
+
+/**
+ * Update the comments field of a marker (used to store ProMarker metadata).
+ * @param {string} guid - The marker GUID.
+ * @param {string} comments - The comments string to set.
+ * @returns {string} 'true' on success, 'false' on failure.
+ */
+function updateMarkerComments(guid, comments) {
+    try {
+        var seq = safeGetActiveSequence();
+        if (!seq) return 'false';
+        var markers = seq.markers;
+        if (!markers) return 'false';
+        if (!guid || typeof guid !== 'string') return 'false';
+
+        var marker = markers.getFirstMarker();
+        while (marker) {
+            var markerGuid = '';
+            try { markerGuid = marker.guid || ''; } catch (ge) {}
+
+            if (markerGuid === guid) {
+                try {
+                    marker.comments = comments || '';
+                    return 'true';
+                } catch (ne) {
+                    return 'false';
+                }
+            }
+
+            try { marker = markers.getNextMarker(marker); } catch (ne) { break; }
+        }
+        return 'false';
+    } catch (e) {
+        return 'false';
     }
 }
 
