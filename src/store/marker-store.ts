@@ -231,32 +231,43 @@ export const useMarkerStore = create<MarkerState>((set, get) => ({
     try {
       const pproMarkers = await cepBridge.getSequenceMarkers();
       if (!pproMarkers) return;
-      // Don't skip on empty — we still need to preserve checked markers
 
       set((state) => {
-        const existingById = new Map(state.markers.map((m) => [m.id, m]));
-        const updatedMarkers: ProMarker[] = [];
-        const pproGuids = new Set(pproMarkers.map((pm) => pm.guid));
+        // ADDITIVE sync: never remove local markers.
+        // 1. Update existing markers that match a Premiere GUID
+        // 2. Add new markers from Premiere that we don't have locally
+        // 3. Keep ALL local markers (checked, pending, etc.)
 
-        // Process markers from Premiere
-        for (const pm of pproMarkers) {
-          const existing = existingById.get(pm.guid);
-          if (existing) {
-            // Merge: keep local enrichments (attachments, checked, ideaBoardData)
-            // but update time/duration/color from Premiere (source of truth for timeline data)
-            // Notes come from marker comments in Premiere
-            updatedMarkers.push({
-              ...existing,
-              name: pm.name || existing.name,
-              time: pm.time,
-              duration: pm.duration,
-              color: pm.color || existing.color,
-              notes: pm.comments || existing.notes,
+        const existingById = new Map(state.markers.map((m) => [m.id, m]));
+        const pproByGuid = new Map(pproMarkers.map((pm) => [pm.guid, pm]));
+        const seen = new Set<string>();
+        const result: ProMarker[] = [];
+
+        // Walk existing local markers — update from Premiere if match found
+        for (const local of state.markers) {
+          const ppro = pproByGuid.get(local.id);
+          if (ppro) {
+            // Marker exists in both — update timeline data from Premiere
+            result.push({
+              ...local,
+              name: ppro.name || local.name,
+              time: ppro.time,
+              duration: ppro.duration,
+              color: ppro.color || local.color,
+              notes: ppro.comments || local.notes,
               updatedAt: Date.now(),
             });
+            seen.add(ppro.guid);
           } else {
-            // New marker from Premiere - create local entry
-            updatedMarkers.push({
+            // Local-only marker — keep it (checked, pending add, or failed add)
+            result.push(local);
+          }
+        }
+
+        // Add markers from Premiere that we don't have locally yet
+        for (const pm of pproMarkers) {
+          if (!seen.has(pm.guid) && !existingById.has(pm.guid)) {
+            result.push({
               id: pm.guid,
               name: pm.name || 'Untitled',
               time: pm.time,
@@ -272,22 +283,12 @@ export const useMarkerStore = create<MarkerState>((set, get) => ({
           }
         }
 
-        // Keep checked markers that are no longer on the timeline
-        // (they were removed when checked, so Premiere won't have them)
-        for (const existing of state.markers) {
-          if (existing.checked && !pproGuids.has(existing.id)) {
-            updatedMarkers.push(existing);
-          }
-        }
-
         // Sort by time
-        updatedMarkers.sort((a, b) => a.time - b.time);
-
-        return { markers: updatedMarkers };
+        result.sort((a, b) => a.time - b.time);
+        return { markers: result };
       });
 
       await get().saveToStorage();
-      debugLogger.info('syncFromPremiere', `Synced ${pproMarkers.length} markers from timeline`);
     } catch (e) {
       debugLogger.error('syncFromPremiere', `Failed: ${e}`);
     }
@@ -300,15 +301,15 @@ export const useMarkerStore = create<MarkerState>((set, get) => ({
     try {
       debugLogger.info('forceReload', 'Starting full reload');
 
-      // Load from storage first (has all local enrichments)
+      // Load from storage (has all local enrichments)
       const storedMarkers = storage.loadMarkers();
 
       // Fetch current state from Premiere
       const pproMarkers = await cepBridge.getSequenceMarkers();
 
       const storedById = new Map(storedMarkers.map((m) => [m.id, m]));
+      const seen = new Set<string>();
       const merged: ProMarker[] = [];
-      const pproGuids = new Set(pproMarkers.map((pm) => pm.guid));
 
       // Merge Premiere markers with stored data
       for (const pm of pproMarkers) {
@@ -320,6 +321,7 @@ export const useMarkerStore = create<MarkerState>((set, get) => ({
             time: pm.time,
             duration: pm.duration,
             color: pm.color || stored.color,
+            notes: pm.comments || stored.notes,
             updatedAt: Date.now(),
           });
         } else {
@@ -330,18 +332,19 @@ export const useMarkerStore = create<MarkerState>((set, get) => ({
             duration: pm.duration,
             color: pm.color || 'green',
             checked: false,
-            notes: '',
+            notes: pm.comments || '',
             attachments: [],
             ideaBoardData: null,
             createdAt: Date.now(),
             updatedAt: Date.now(),
           });
         }
+        seen.add(pm.guid);
       }
 
-      // Keep checked markers from storage
+      // Keep ALL stored markers not in Premiere (checked, pending, etc.)
       for (const stored of storedMarkers) {
-        if (stored.checked && !pproGuids.has(stored.id)) {
+        if (!seen.has(stored.id)) {
           merged.push(stored);
         }
       }
