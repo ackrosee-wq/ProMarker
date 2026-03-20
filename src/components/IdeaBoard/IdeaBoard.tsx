@@ -17,65 +17,50 @@ interface HistoryEntry {
 }
 
 const DOT_SPACING = 20;
-const DOT_RADIUS = 0.8;
-const DOT_COLOR = 'rgba(255,255,255,0.06)';
+const DOT_COLOR = 'rgba(255,255,255,0.08)';
 
-function drawDotGrid(canvas: fabric.Canvas, show: boolean) {
-  // Remove old grid objects
-  const objects = canvas.getObjects();
-  objects.forEach((obj) => {
-    if ((obj as fabric.Object & { _isGrid?: boolean })._isGrid) {
-      canvas.remove(obj);
+/**
+ * Draw dot grid directly on the canvas lower-canvas element using afterRender.
+ * This is FAR more performant than adding thousands of fabric objects.
+ */
+function setupDotGrid(canvas: fabric.Canvas) {
+  canvas.on('after:render', () => {
+    const ctx = canvas.getContext();
+    if (!ctx) return;
+    // Check if grid is enabled via a flag on the canvas
+    if (!(canvas as any).__showGrid) return;
+
+    const zoom = canvas.getZoom();
+    const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+    const panX = vpt[4];
+    const panY = vpt[5];
+    const w = canvas.getWidth();
+    const h = canvas.getHeight();
+
+    const spacing = DOT_SPACING * zoom;
+    if (spacing < 4) return; // too zoomed out, skip grid
+
+    // Calculate starting offsets
+    const offsetX = panX % spacing;
+    const offsetY = panY % spacing;
+
+    ctx.save();
+    ctx.fillStyle = DOT_COLOR;
+
+    for (let x = offsetX; x < w; x += spacing) {
+      for (let y = offsetY; y < h; y += spacing) {
+        ctx.beginPath();
+        ctx.arc(x, y, 0.8 * zoom, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
+    ctx.restore();
   });
+}
 
-  if (!show) {
-    canvas.renderAll();
-    return;
-  }
-
-  const zoom = canvas.getZoom();
-  const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
-  const panX = vpt[4];
-  const panY = vpt[5];
-
-  const w = canvas.getWidth();
-  const h = canvas.getHeight();
-
-  // Calculate visible area in canvas coords
-  const startX = -panX / zoom;
-  const startY = -panY / zoom;
-  const endX = startX + w / zoom;
-  const endY = startY + h / zoom;
-
-  const spacing = DOT_SPACING;
-  const gridStartX = Math.floor(startX / spacing) * spacing;
-  const gridStartY = Math.floor(startY / spacing) * spacing;
-
-  const dots: fabric.Circle[] = [];
-  for (let x = gridStartX; x < endX; x += spacing) {
-    for (let y = gridStartY; y < endY; y += spacing) {
-      const dot = new fabric.Circle({
-        left: x - DOT_RADIUS,
-        top: y - DOT_RADIUS,
-        radius: DOT_RADIUS,
-        fill: DOT_COLOR,
-        selectable: false,
-        evented: false,
-        hasControls: false,
-        hasBorders: false,
-        objectCaching: false,
-      });
-      (dot as fabric.Circle & { _isGrid?: boolean })._isGrid = true;
-      dots.push(dot);
-    }
-  }
-
-  // Batch add
-  dots.forEach((d) => canvas.add(d));
-  // Move grid dots behind all other objects
-  dots.forEach((d) => canvas.sendToBack(d));
-  canvas.renderAll();
+function setGridVisible(canvas: fabric.Canvas, show: boolean) {
+  (canvas as any).__showGrid = show;
+  canvas.requestRenderAll();
 }
 
 export const IdeaBoard: React.FC<IdeaBoardProps> = ({ markerId }) => {
@@ -178,6 +163,10 @@ export const IdeaBoard: React.FC<IdeaBoardProps> = ({ markerId }) => {
 
     fabricRef.current = canvas;
 
+    // Set up performant dot grid (renders via after:render hook, no fabric objects)
+    setupDotGrid(canvas);
+    setGridVisible(canvas, showGrid);
+
     // Load saved data
     if (markerId) {
       const marker = useMarkerStore.getState().markers.find((m) => m.id === markerId);
@@ -269,7 +258,6 @@ export const IdeaBoard: React.FC<IdeaBoardProps> = ({ markerId }) => {
         isPanningRef.current = false;
         canvas.selection = true;
         canvas.setCursor('default');
-        if (showGrid) drawDotGrid(canvas, true);
       }
     });
 
@@ -282,7 +270,6 @@ export const IdeaBoard: React.FC<IdeaBoardProps> = ({ markerId }) => {
       const pointer = canvas.getPointer(opt.e, true);
       canvas.zoomToPoint(new fabric.Point(pointer.x, pointer.y), newZoom);
       setZoom(newZoom);
-      if (showGrid) drawDotGrid(canvas, true);
       we.preventDefault();
       we.stopPropagation();
     });
@@ -305,19 +292,19 @@ export const IdeaBoard: React.FC<IdeaBoardProps> = ({ markerId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markerId]);
 
-  // Apply grid
+  // Apply grid visibility
   useEffect(() => {
     if (fabricRef.current) {
-      drawDotGrid(fabricRef.current, showGrid);
+      setGridVisible(fabricRef.current, showGrid);
     }
-  }, [showGrid, zoom]);
+  }, [showGrid]);
 
   // Apply zoom changes from toolbar
   useEffect(() => {
     if (fabricRef.current) {
       const center = fabricRef.current.getCenter();
       fabricRef.current.zoomToPoint(new fabric.Point(center.left, center.top), zoom);
-      fabricRef.current.renderAll();
+      fabricRef.current.requestRenderAll();
     }
   }, [zoom]);
 

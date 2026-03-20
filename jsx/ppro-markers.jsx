@@ -558,7 +558,7 @@ function updateMarkerColor(guid, colorName) {
 
             if (markerGuid === guid) {
                 try {
-                    newMarker.setColorByIndex(cIdx);
+                    marker.setColorByIndex(cIdx);
                     return 'true';
                 } catch (ce) {
                     try {

@@ -56,11 +56,16 @@ class Storage {
   // Marker data persistence
   // ---------------------------------------------------------------------------
 
+  /** Whether storage has been initialized. */
+  get isInitialized() {
+    return this.initialized;
+  }
+
   /** Save the full marker array to promarker-data.json. */
   saveMarkers(markers: ProMarker[]) {
     const json = JSON.stringify(markers, null, 2);
 
-    if (this.useNodeFs && fs && path) {
+    if (this.useNodeFs && fs && path && this.promarkerDir) {
       try {
         const filePath = path.join(this.promarkerDir, DATA_FILE);
         fs.writeFileSync(filePath, json, 'utf-8');

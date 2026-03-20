@@ -225,7 +225,8 @@ export const useMarkerStore = create<MarkerState>((set, get) => ({
   syncFromPremiere: async () => {
     try {
       const pproMarkers = await cepBridge.getSequenceMarkers();
-      if (!pproMarkers || pproMarkers.length === 0) return;
+      if (!pproMarkers) return;
+      // Don't skip on empty — we still need to preserve checked markers
 
       set((state) => {
         const existingById = new Map(state.markers.map((m) => [m.id, m]));

@@ -45,6 +45,7 @@ class CepBridge {
 
   /**
    * Initialise the bridge.
+   * IMPORTANT: Register event listeners BEFORE calling init().
    * @returns true if running inside CEP, false if mock mode.
    */
   init(): boolean {
@@ -60,10 +61,9 @@ class CepBridge {
     if (!this.csInterface) {
       this.isMock = true;
       this.jsxReady = true;
-      console.log('[ProMarker] Not in CEP environment, using mock mode');
-      debugLogger.info('CepBridge.init', 'Mock mode activated');
-      // Emit connected after a tick so listeners can register first
-      setTimeout(() => this.emit('connected', null), 100);
+      console.log('[ProMarker] Not in CEP environment — running inside CEP panel');
+      // Emit connected on next tick so listeners registered before init() are called
+      setTimeout(() => this.emit('connected', null), 50);
       return false;
     }
 
@@ -132,18 +132,31 @@ class CepBridge {
   private loadJSXAndConnect() {
     if (!this.csInterface) return;
 
-    const extensionPath = this.csInterface.getSystemPath('extension');
-    const jsxPath = extensionPath + '/jsx/ppro-markers.jsx';
+    let extensionPath = '';
+    try {
+      extensionPath = this.csInterface.getSystemPath('extension');
+    } catch {
+      this.retryConnection();
+      return;
+    }
 
+    if (!extensionPath) {
+      this.retryConnection();
+      return;
+    }
+
+    const jsxPath = extensionPath.replace(/\\/g, '/') + '/jsx/ppro-markers.jsx';
     debugLogger.info('CepBridge.loadJSX', `Loading ${jsxPath}`);
 
-    this.csInterface.evalScript(`$.evalFile("${jsxPath.replace(/\\/g, '/')}")`, (result: string) => {
-      if (result === 'EvalScript_ErrMessage' || result === '') {
-        // JSX file might not have loaded; retry
+    // Load the JSX file, then verify it's available
+    const loadScript = `$.evalFile("${jsxPath}"); typeof getProjectPath`;
+    this.csInterface.evalScript(loadScript, (result: string) => {
+      if (result === 'function') {
+        // JSX loaded successfully
+        this.verifyConnection();
+      } else {
         this.retryConnection();
-        return;
       }
-      this.verifyConnection();
     });
   }
 
@@ -160,15 +173,15 @@ class CepBridge {
   }
 
   private verifyConnection() {
-    this.evalScript('getProjectPath()').then((result) => {
-      if (result !== '' && result !== 'EvalScript_ErrMessage' && result !== 'undefined') {
+    // Check that the JSX file loaded by testing if getProjectPath function exists
+    this.evalScript('typeof getProjectPath', false).then((result) => {
+      if (result === 'function') {
         this.jsxReady = true;
         this.retryCount = 0;
-        debugLogger.info('CepBridge.verify', `Connected. Project path: ${result}`);
+        debugLogger.info('CepBridge.verify', 'JSX loaded successfully');
         this.emit('connected', null);
         this.startPolling();
       } else {
-        // Project may not be open yet; retry
         this.retryConnection();
       }
     });
@@ -208,9 +221,13 @@ class CepBridge {
   // Script evaluation
   // -------------------------------------------------------------------------
 
-  private evalScript(script: string): Promise<string> {
+  private evalScript(script: string, requireReady = true): Promise<string> {
     return new Promise((resolve) => {
-      if (!this.csInterface || !this.jsxReady) {
+      if (!this.csInterface) {
+        resolve('');
+        return;
+      }
+      if (requireReady && !this.jsxReady) {
         resolve('');
         return;
       }
